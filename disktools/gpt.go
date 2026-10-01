@@ -83,7 +83,7 @@ func GetGPTHeader(diskName string) (GPTHeader, int) {
 	}
 	defer unix.Close(fd)
 
-	logicalBlockSize, err := unix.IoctlGetInt(fd, DKIOCGETBLOCKSIZE)
+	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	if err != nil {
 		fmt.Printf("Error calling ioctl DKIOCGETBLOCKSIZE to get logical block size %v\n", err)
@@ -118,7 +118,7 @@ func ReadGPTEntries(diskName string, gptHeader GPTHeader) []GPTPartitionEntry {
 		return []GPTPartitionEntry{}
 	}
 	defer unix.Close(fd)
-	logicalBlockSize, err := unix.IoctlGetInt(fd, DKIOCGETBLOCKSIZE)
+	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	return readGPTEntries(fd, &gptHeader, uint32(logicalBlockSize))
 }
