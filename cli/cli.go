@@ -22,21 +22,31 @@ func evalCommand(command string) {
 		return
 	}
 
-	fmt.Printf("EVAL %s\n", command)
-	fmt.Printf("%b\n", command == "LISTDRIVES")
+	commandParts := strings.Split(command, " ")
 
-	switch command {
-	case "LISTDRIVES":
+	switch string(commandParts[0]) {
+	case "ld":
 		disktools.ListDisks()
-	case "INSPECT":
-		commandParts := strings.Split(command, " ")
+	case "i":
 		if len(commandParts) < 2 {
-			fmt.Printf("no drive specified. usage: LISTDISK <DRIVE_NAME>")
+			fmt.Printf("no drive specified. usage: i <DRIVE_NAME>")
 		}
 		gptHeader, errorCode := disktools.GetGPTHeader(commandParts[1])
 		if errorCode != 0 {
 			fmt.Printf("Failed to get GPT header for drive %s\n", commandParts[1])
 		}
 		disktools.DumpGPTHeader(gptHeader)
+	case "p":
+		if len(commandParts) < 2 {
+			fmt.Printf("no drive specified. usage: p <DRIVE_NAME>")
+		}
+		gptHeader, errorCode := disktools.GetGPTHeader(commandParts[1])
+		if errorCode != 0 {
+			fmt.Printf("Failed to get GPT header for drive %s\n", commandParts[1])
+		}
+		entries := disktools.ReadGPTEntries(commandParts[1], gptHeader)
+		for _, entry := range entries {
+			disktools.DumpGPTPartitionEntry(entry)
+		}
 	}
 }

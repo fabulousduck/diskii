@@ -29,6 +29,10 @@ go.work.sum
 
 lessons.md
 
+# build file
+main
+
 # Editor/IDE
 # .idea/
 # .vscode/
+.zed/

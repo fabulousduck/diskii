@@ -86,23 +86,23 @@ func GetGPTHeader(diskName string) (GPTHeader, int) {
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	if err != nil {
-		fmt.Printf("Error calling ioctl DKIOCGETBLOCKSIZE to get logical block size %v\n", err)
+		fmt.Printf("Error calling ioctl to get logical block size %v\n", err)
 		return gptHeader, 1
 	}
 
-	gpt_header_bytes := make([]byte, logicalBlockSize)
-
 	// the disk header is offset by one block
+	gpt_header_bytes := make([]byte, logicalBlockSize)
 	rsize, err := unix.Pread(fd, gpt_header_bytes, int64(logicalBlockSize))
 
 	switch true {
 	case err != nil:
-		fmt.Println(err)
+		fmt.Println("error during pread ", err)
 		return gptHeader, 1
 	case rsize == 0:
-		fmt.Println("Pread EOF")
+		fmt.Printf("Pread EOF")
 		return gptHeader, 1
 	case !isGPTHeader(gpt_header_bytes):
+		fmt.Printf("drive is not GPT")
 		return gptHeader, 1
 	}
 
@@ -119,7 +119,6 @@ func ReadGPTEntries(diskName string, gptHeader GPTHeader) []GPTPartitionEntry {
 	}
 	defer unix.Close(fd)
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
-
 	return readGPTEntries(fd, &gptHeader, uint32(logicalBlockSize))
 }
 
@@ -141,11 +140,9 @@ func readGPTEntries(fd int, GPTHeader *GPTHeader, logical_block_size uint32) []G
 	for i := uint32(0); i < GPTHeader.NumPartitionsEntries; i++ {
 		LBAEntryStart := i * GPTHeader.SizeofPartitionEntry
 		LBAEntryEnd := LBAEntryStart + GPTHeader.SizeofPartitionEntry
-
 		LBABytes := AllLBABytes[LBAEntryStart:LBAEntryEnd]
 
 		GPTPartitionEntries = append(GPTPartitionEntries, ReadLBAEntry(LBABytes))
-
 	}
 
 	return GPTPartitionEntries
