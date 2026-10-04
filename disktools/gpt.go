@@ -59,7 +59,6 @@ type GPTHeader struct {
 	NumPartitionsEntries     uint32
 	SizeofPartitionEntry     uint32
 	PartitionEntryArrayCRC32 uint32
-	Reserved_b               []byte
 }
 
 type GPTPartitionEntry struct {
@@ -75,8 +74,6 @@ type GPTPartitionEntry struct {
 	Attributes uint64
 	// Human readable name of the partition
 	PartitionName [72]byte
-	// Reserved by UEFI. Must be 0
-	Reserved []byte
 }
 
 type PartitionTypeGuid [16]byte
@@ -159,37 +156,31 @@ func readGPTEntries(fd int, GPTHeader *GPTHeader, logical_block_size uint32) []G
 	return GPTPartitionEntries
 }
 
-func ReadLBAEntry(bytes []byte) GPTPartitionEntry {
+func ReadLBAEntry(entryBytes []byte) GPTPartitionEntry {
 	var entry GPTPartitionEntry
 
-	copy(entry.PartitionTypeGuid[:], bytes[0:16])
-	copy(entry.UniquePartitionGuid[:], bytes[16:32])
-	entry.StartingLBA = binary.LittleEndian.Uint64(bytes[32:40])
-	entry.EndingLBA = binary.LittleEndian.Uint64(bytes[40:48])
-	entry.Attributes = binary.LittleEndian.Uint64(bytes[48:56])
-	copy(entry.PartitionName[:], bytes[56:128])
+	if err := binary.Read(
+		bytes.NewReader(entryBytes),
+		binary.LittleEndian,
+		&entry,
+	); err != nil {
+		fmt.Println(err)
+	}
 
 	return entry
 }
 
 // https://uefi.org/specs/UEFI/2.10/05_GUID_Partition_Table_Format.html#gpt-header
-func ReadGPTHeader(bytes []byte, headerStruct *GPTHeader) {
+func ReadGPTHeader(gptBytes []byte, headerStruct *GPTHeader) {
+	err := binary.Read(
+		bytes.NewReader(gptBytes),
+		binary.LittleEndian,
+		headerStruct,
+	)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	copy(headerStruct.Signature[:], bytes[0:8])
-	headerStruct.Revision = binary.LittleEndian.Uint32(bytes[8:12])
-	headerStruct.HeaderSize = binary.LittleEndian.Uint32(bytes[12:16])
-	headerStruct.HeaderCRC32 = binary.LittleEndian.Uint32(bytes[16:20])
-	headerStruct.Reserved_a = binary.LittleEndian.Uint32(bytes[20:24])
-	headerStruct.MyLBA = binary.LittleEndian.Uint64(bytes[24:32])
-	headerStruct.AlternativeLBA = binary.LittleEndian.Uint64(bytes[32:40])
-	headerStruct.FirstUsableLBA = binary.LittleEndian.Uint64(bytes[40:48])
-	headerStruct.LastUsableLBA = binary.LittleEndian.Uint64(bytes[48:56])
-	copy(headerStruct.DiskGuid[:], bytes[56:72])
-	headerStruct.PartitionEntryLBA = binary.LittleEndian.Uint64(bytes[72:80])
-	headerStruct.NumPartitionsEntries = binary.LittleEndian.Uint32(bytes[80:84])
-	headerStruct.SizeofPartitionEntry = binary.LittleEndian.Uint32(bytes[84:88])
-	headerStruct.PartitionEntryArrayCRC32 = binary.LittleEndian.Uint32(bytes[88:92])
-	copy(headerStruct.Reserved_b[:], bytes[92:len(bytes)-1])
 }
 
 func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {
@@ -244,5 +235,4 @@ func DumpGPTHeader(header GPTHeaderExt, verbose bool) {
 	fmt.Printf("NumPartitionEntries: %d\n", header.RawHeader.NumPartitionsEntries)
 	fmt.Printf("SizeofPartitionEntr: %d\n", header.RawHeader.SizeofPartitionEntry)
 	fmt.Printf("PartitionEntryCRC32: %d\n", header.RawHeader.PartitionEntryArrayCRC32)
-	fmt.Printf("Reserved_b:          % x\n", header.RawHeader.Reserved_b)
 }
