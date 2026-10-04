@@ -1,6 +1,7 @@
 package disktools
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -37,6 +38,12 @@ Storage device
 An LBA (Logical Block Address) is the numbered position of a fixed-size block on a storage device.
 */
 
+type GPTHeaderExt struct {
+	RawHeader  GPTHeader
+	SectorSize int
+}
+
+// GPT header read directly from the disk
 type GPTHeader struct {
 	Signature                [8]byte
 	Revision                 uint32
@@ -74,12 +81,13 @@ type GPTPartitionEntry struct {
 
 type PartitionTypeGuid [16]byte
 
-func GetGPTHeader(diskName string) (GPTHeader, int) {
+func GetGPTHeader(diskName string) (GPTHeaderExt, int) {
+	gptHeaderExt := GPTHeaderExt{}
 	gptHeader := GPTHeader{}
 	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
 	if err != nil {
 		fmt.Println(err)
-		return gptHeader, 1
+		return gptHeaderExt, 1
 	}
 	defer unix.Close(fd)
 
@@ -87,8 +95,10 @@ func GetGPTHeader(diskName string) (GPTHeader, int) {
 
 	if err != nil {
 		fmt.Printf("Error calling ioctl to get logical block size %v\n", err)
-		return gptHeader, 1
+		return gptHeaderExt, 1
 	}
+
+	gptHeaderExt.SectorSize = logicalBlockSize
 
 	// the disk header is offset by one block
 	gpt_header_bytes := make([]byte, logicalBlockSize)
@@ -97,18 +107,19 @@ func GetGPTHeader(diskName string) (GPTHeader, int) {
 	switch true {
 	case err != nil:
 		fmt.Println("error during pread ", err)
-		return gptHeader, 1
+		return gptHeaderExt, 1
 	case rsize == 0:
 		fmt.Printf("Pread EOF")
-		return gptHeader, 1
+		return gptHeaderExt, 1
 	case !isGPTHeader(gpt_header_bytes):
 		fmt.Printf("drive is not GPT")
-		return gptHeader, 1
+		return gptHeaderExt, 1
 	}
 
 	ReadGPTHeader(gpt_header_bytes, &gptHeader)
+	gptHeaderExt.RawHeader = gptHeader
 
-	return gptHeader, 0
+	return gptHeaderExt, 0
 }
 
 func ReadGPTEntries(diskName string, gptHeader GPTHeader) []GPTPartitionEntry {
@@ -131,8 +142,8 @@ func readGPTEntries(fd int, GPTHeader *GPTHeader, logical_block_size uint32) []G
 	GPTEntriesStartOffset := uint32(2)
 	GPTPartitionEntries := make([]GPTPartitionEntry, 0, GPTHeader.NumPartitionsEntries)
 	AllLBABytes := make([]byte, GPTHeader.SizeofPartitionEntry*GPTHeader.NumPartitionsEntries)
-
 	_, err := unix.Pread(fd, AllLBABytes, int64(GPTEntriesStartOffset*logical_block_size))
+
 	if err != nil {
 		fmt.Printf("Error reading LBA entry: %v\n", err)
 	}
@@ -181,34 +192,57 @@ func ReadGPTHeader(bytes []byte, headerStruct *GPTHeader) {
 	copy(headerStruct.Reserved_b[:], bytes[92:len(bytes)-1])
 }
 
-func DumpGPTPartitionEntry(entry GPTPartitionEntry) {
+func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {
 	if entry.StartingLBA == 0 {
 		return
 	}
 
+	partitionSizeGB := ((entry.EndingLBA - entry.StartingLBA) * uint64(sectorSize)) / 1e9
+	printablePartitionName := string(bytes.TrimRight(entry.PartitionName[:], "\x00"))
+
+	if printablePartitionName == "" {
+		printablePartitionName = "Untitled partition"
+	}
+
+	if !verbose {
+		fmt.Printf("%s %d gb\n", printablePartitionName, partitionSizeGB)
+		return
+	}
+
 	fmt.Printf("----------- Partition entry -----------\n")
+	fmt.Printf("PartitionSize		%d gb\n", partitionSizeGB)
 	fmt.Printf("PartitionTypeGuid:       % x\n", entry.PartitionTypeGuid)
 	fmt.Printf("UniquePartitionTypeGuid: % x\n", entry.UniquePartitionGuid)
 	fmt.Printf("StartingLBA:              %d\n", entry.StartingLBA)
 	fmt.Printf("EndingLBA:                %d\n", entry.EndingLBA)
 	fmt.Printf("Attributes:               %d\n", entry.Attributes)
-	fmt.Printf("PartitionName:            %s\n", entry.PartitionName)
+	fmt.Printf("PartitionName:            %s\n", printablePartitionName)
+
 }
 
-func DumpGPTHeader(header GPTHeader) {
-	fmt.Printf("HeaderSig:           %s\n", header.Signature)
-	fmt.Printf("Revision:           % x\n", header.Revision)
-	fmt.Printf("HeaderSize:          %d\n", header.HeaderSize)
-	fmt.Printf("HeaderCRC32:        % x\n", header.HeaderCRC32)
-	fmt.Printf("Reserved_a:         % x\n", header.Reserved_a)
-	fmt.Printf("MyLBA:              % x\n", header.MyLBA)
-	fmt.Printf("AlternativeLBA:     % x\n", header.AlternativeLBA)
-	fmt.Printf("FirstUsableLBA:     % x\n", header.FirstUsableLBA)
-	fmt.Printf("LastUsableLBA:      % x\n", header.LastUsableLBA)
-	fmt.Printf("DiskGuid:            % x\n", header.DiskGuid)
-	fmt.Printf("PartitionEntryLBA:  % x\n", header.PartitionEntryLBA)
-	fmt.Printf("NumPartitionEntries: %d\n", header.NumPartitionsEntries)
-	fmt.Printf("SizeofPartitionEntr: %d\n", header.SizeofPartitionEntry)
-	fmt.Printf("PartitionEntryCRC32: %d\n", header.PartitionEntryArrayCRC32)
-	fmt.Printf("Reserved_b:          % x\n", header.Reserved_b)
+func DumpGPTHeader(header GPTHeaderExt, verbose bool) {
+
+	diskSize := ((header.RawHeader.LastUsableLBA + 1) * uint64(header.SectorSize)) / 1e9
+
+	if !verbose {
+		fmt.Printf("%s	%d gb\n", header.RawHeader.Signature, diskSize)
+		return
+	}
+
+	fmt.Printf("size:		     %d\n", diskSize)
+	fmt.Printf("HeaderSig:           %s\n", header.RawHeader.Signature)
+	fmt.Printf("Revision:           % x\n", header.RawHeader.Revision)
+	fmt.Printf("HeaderSize:          %d\n", header.RawHeader.HeaderSize)
+	fmt.Printf("HeaderCRC32:        % x\n", header.RawHeader.HeaderCRC32)
+	fmt.Printf("Reserved_a:         % x\n", header.RawHeader.Reserved_a)
+	fmt.Printf("MyLBA:              % x\n", header.RawHeader.MyLBA)
+	fmt.Printf("AlternativeLBA:     % x\n", header.RawHeader.AlternativeLBA)
+	fmt.Printf("FirstUsableLBA:     % x\n", header.RawHeader.FirstUsableLBA)
+	fmt.Printf("LastUsableLBA:      % x\n", header.RawHeader.LastUsableLBA)
+	fmt.Printf("DiskGuid:            % x\n", header.RawHeader.DiskGuid)
+	fmt.Printf("PartitionEntryLBA:  % x\n", header.RawHeader.PartitionEntryLBA)
+	fmt.Printf("NumPartitionEntries: %d\n", header.RawHeader.NumPartitionsEntries)
+	fmt.Printf("SizeofPartitionEntr: %d\n", header.RawHeader.SizeofPartitionEntry)
+	fmt.Printf("PartitionEntryCRC32: %d\n", header.RawHeader.PartitionEntryArrayCRC32)
+	fmt.Printf("Reserved_b:          % x\n", header.RawHeader.Reserved_b)
 }
