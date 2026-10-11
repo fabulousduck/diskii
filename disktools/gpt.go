@@ -180,7 +180,6 @@ func ReadGPTHeader(gptBytes []byte, headerStruct *GPTHeader) {
 	if err != nil {
 		fmt.Println(err)
 	}
-
 }
 
 func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {

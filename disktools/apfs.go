@@ -67,7 +67,7 @@ func ParseAPFSPartition(diskName string, paritionEntry GPTPartitionEntry, LBASiz
 func ReadAPFSSuperBlock(bytes []byte) APFSContainerSuperBlock {
 	var block APFSContainerSuperBlock
 
-	// LEFT OFF HERE READING THE SUPER BLOCK
+	// TODO: implement
 
 	return block
 }
