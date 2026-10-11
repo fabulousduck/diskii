@@ -78,6 +78,26 @@ type GPTPartitionEntry struct {
 
 type PartitionTypeGuid [16]byte
 
+func DiskIsGPT(diskName string) bool {
+	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	defer unix.Close(fd)
+
+	logicalBlockSize, err := GetLogicalBlockSize(fd)
+
+	gptBytes := make([]byte, logicalBlockSize)
+	rsize, err := unix.Pread(fd, gptBytes, int64(logicalBlockSize))
+
+	if rsize <= logicalBlockSize {
+		return false
+	}
+
+	return isGPTHeader(gptBytes)
+}
+
 func GetGPTHeader(diskName string) (GPTHeaderExt, int) {
 	gptHeaderExt := GPTHeaderExt{}
 	gptHeader := GPTHeader{}
@@ -106,10 +126,10 @@ func GetGPTHeader(diskName string) (GPTHeaderExt, int) {
 		fmt.Println("error during pread ", err)
 		return gptHeaderExt, 1
 	case rsize == 0:
-		fmt.Printf("Pread EOF")
+		fmt.Printf("Pread EOF\n")
 		return gptHeaderExt, 1
 	case !isGPTHeader(gpt_header_bytes):
-		fmt.Printf("drive is not GPT")
+		fmt.Printf("drive is not GPT\n")
 		return gptHeaderExt, 1
 	}
 

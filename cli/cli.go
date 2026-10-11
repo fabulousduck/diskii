@@ -14,6 +14,20 @@ func ParseFlags() {
 	flag.Parse()
 
 	if *inspectFlag != "" {
+		isMBR, isGPT := false, false
+
+		if disktools.DiskIsMBR(*inspectFlag) {
+			isMBR = true
+		}
+
+		if disktools.DiskIsGPT(*inspectFlag) {
+			isGPT = true
+		}
+
+		if isMBR && !isGPT {
+			disktools.DumpMBR(disktools.ParseMBR(*inspectFlag), *verboseFlag)
+			return
+		}
 
 		gptHeaderExt, errorCode := disktools.GetGPTHeader(*inspectFlag)
 		if errorCode != 0 {
