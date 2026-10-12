@@ -37,19 +37,13 @@ type APFSContainerSuperBlock struct {
 // diskName: /dev/ path to the disk to read from
 // partitionEntry: GPT partition record
 // LBASize: logical block size used on the disk
-func ParseAPFSPartition(diskName string, paritionEntry GPTPartitionEntry, LBASize uint64) (APFSContainerSuperBlock, int) {
+func ParseAPFSPartition(fd int, paritionEntry GPTPartitionEntry, LBASize uint64) (APFSContainerSuperBlock, int) {
 	var emptyBlock APFSContainerSuperBlock
-
-	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
-	if err != nil {
-		fmt.Printf("ParseAPFSPartition could not open disk %s\n Reason: %v\n", diskName, err)
-		return emptyBlock, 1
-	}
-	defer unix.Close(fd)
-
 	superBlockBytes := make([]byte, LBASize)
 	rsize, err := unix.Pread(fd, superBlockBytes, int64(paritionEntry.StartingLBA*LBASize))
-
+	if err != nil {
+		fmt.Printf("%s\n", err)
+	}
 	if rsize < int(LBASize) {
 		fmt.Printf("APFS pread read less that LBA block size %d\n", LBASize)
 	}

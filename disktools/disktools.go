@@ -3,6 +3,8 @@ package disktools
 import (
 	"fmt"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 func ListDisks() {
@@ -29,4 +31,13 @@ func GetDiskNames() []string {
 	}
 
 	return disks
+}
+
+func GetFD(fileName string) int {
+	fd, err := unix.Open(fileName, unix.O_RDONLY, 0)
+	if err != nil {
+		fmt.Println(err)
+		return -1
+	}
+	return fd
 }

@@ -16,15 +16,8 @@ type MBRStruct struct {
 	Signature              uint16
 }
 
-func DiskIsMBR(diskName string) bool {
+func DiskIsMBR(fd int) bool {
 	MBRSize := 512
-	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
-	if err != nil {
-		fmt.Println(err)
-		return false
-	}
-	defer unix.Close(fd)
-
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	if err != nil {
@@ -39,23 +32,11 @@ func DiskIsMBR(diskName string) bool {
 		return false
 	}
 
-	if mbr_bytes[510] != 0x55 && mbr_bytes[511] != 0xAA {
-		fmt.Printf("disk is not MBR - signature does not match 0x55AA. Got %04x %04x \n", mbr_bytes[510], mbr_bytes[511])
-		return false
-	}
-
-	return true
+	return mbr_bytes[510] != 0x55 && mbr_bytes[511] != 0xAA
 }
 
-func ParseMBR(diskName string) MBRStruct {
+func ParseMBR(fd int) MBRStruct {
 	mbrStruct := MBRStruct{}
-	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
-	if err != nil {
-		fmt.Println(err)
-		return mbrStruct
-	}
-	defer unix.Close(fd)
-
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	if err != nil {

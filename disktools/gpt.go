@@ -78,15 +78,14 @@ type GPTPartitionEntry struct {
 
 type PartitionTypeGuid [16]byte
 
-func DiskIsGPT(diskName string) bool {
-	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
-	if err != nil {
-		fmt.Println(err)
-		return false
-	}
-	defer unix.Close(fd)
+func DiskIsGPT(fd int) bool {
 
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
+
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return false
+	}
 
 	gptBytes := make([]byte, logicalBlockSize)
 	rsize, err := unix.Pread(fd, gptBytes, int64(logicalBlockSize))
@@ -98,16 +97,9 @@ func DiskIsGPT(diskName string) bool {
 	return isGPTHeader(gptBytes)
 }
 
-func GetGPTHeader(diskName string) (GPTHeaderExt, int) {
+func GetGPTHeader(fd int) (GPTHeaderExt, int) {
 	gptHeaderExt := GPTHeaderExt{}
 	gptHeader := GPTHeader{}
-	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
-	if err != nil {
-		fmt.Println(err)
-		return gptHeaderExt, 1
-	}
-	defer unix.Close(fd)
-
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	if err != nil {
@@ -139,22 +131,11 @@ func GetGPTHeader(diskName string) (GPTHeaderExt, int) {
 	return gptHeaderExt, 0
 }
 
-func ReadGPTEntries(diskName string, gptHeader GPTHeader) []GPTPartitionEntry {
-	fd, err := unix.Open(diskName, unix.O_RDONLY, 0)
-	if err != nil {
-		fmt.Println(err)
-		return []GPTPartitionEntry{}
-	}
-	defer unix.Close(fd)
-	logicalBlockSize, err := GetLogicalBlockSize(fd)
-	return readGPTEntries(fd, &gptHeader, uint32(logicalBlockSize))
-}
-
 func isGPTHeader(bytes []byte) bool {
 	return string(bytes[:8]) == "EFI PART"
 }
 
-func readGPTEntries(fd int, GPTHeader *GPTHeader, logical_block_size uint32) []GPTPartitionEntry {
+func ReadGPTEntries(fd int, GPTHeader GPTHeader, logical_block_size uint32) []GPTPartitionEntry {
 	// LBA0 (protective MBR) and LBA1 (GPT header) are reserved, so start at 2
 	GPTEntriesStartOffset := uint32(2)
 	GPTPartitionEntries := make([]GPTPartitionEntry, 0, GPTHeader.NumPartitionsEntries)
