@@ -1,12 +1,14 @@
 package disktools
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"golang.org/x/sys/unix"
 )
 
-// docs https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf
+// source: https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf
 
 var APFSIdentifier = PartitionTypeGuid{
 	0xef, 0x57, 0x34, 0x7c,
@@ -16,21 +18,80 @@ var APFSIdentifier = PartitionTypeGuid{
 	0x00, 0x30, 0x65, 0x43, 0xec, 0xac,
 }
 
-const APFS_MAGIC_BYTES = "NXSB"
+var APFSRecoveryIdentifier = PartitionTypeGuid{
+	0x72, 0x76, 0x63, 0x52, 0x00, 0x79, 0xaa, 0x11, 0xaa, 0x11, 0x00, 0x30, 0x65, 0x43, 0xec, 0xac,
+}
+
+var APFSISCIdentifier = PartitionTypeGuid{
+	0x61, 0x69, 0x64, 0x69, 0x00, 0x67, 0xaa, 0x11, 0xaa, 0x11, 0x00, 0x30, 0x65, 0x43, 0xec, 0xac,
+}
+
+const APFS_MAGIC_BYTES = "BSXN"
+const MAX_CKSUM_SIZE = 8
+const NX_MAX_FILE_SYSTEMS = 100
+const NX_EPH_INFO_COUNT = 4
+const NX_EPH_MIN_BLOCK_COUNT = 8
+const NX_MAX_FILE_SYSTEM_EPH_STRUCTS = 4
+const NX_TX_MIN_CHECKPOINT_COUNT = 4
+const NX_EPH_INFO_VERSION_1 = 1
+const NX_NUM_COUNTERS = 32
+
+type obj_phys_t struct {
+	o_cksum   [MAX_CKSUM_SIZE]uint8
+	o_oid     uint64
+	o_xid     uint64
+	o_type    uint32
+	o_subtype uint32
+}
+
+type prange_t struct {
+	pr_start_paddr uint64
+	pr_block_count uint64
+}
+
+type uuid_t [16]uint8
 
 type APFSContainerSuperBlock struct {
-	Checksum                       uint32
-	ObjectId                       uint32
-	TransactionId                  uint32
-	ObjectType                     uint16
-	ObjectSubType                  uint16
-	ContainerMagicBytes            [4]byte
-	APFSBlockSize                  uint16
-	APFSBlockCount                 uint32
-	OptionalFeatureFlags           uint32
-	ReadOnlyCompatibleFeatureFlags uint32
-	IncompatibleFeatureFlags       uint32
-	ContinerUUID                   [16]byte
+	nx_o                            obj_phys_t
+	nx_magic                        uint32
+	nx_block_size                   uint32
+	nx_block_count                  uint64
+	nx_features                     uint64
+	nx_readonly_compatible_features uint64
+	nx_incompatible_features        uint64
+	nx_uuid                         uuid_t
+	nx_next_oid                     uint64
+	nx_next_xid                     uint64
+	nx_xp_desc_blocks               uint32
+	nx_xp_data_blocks               uint32
+	nx_xp_desc_base                 uint64
+	nx_xp_data_base                 uint64
+	nx_xp_desc_next                 uint32
+	nx_xp_data_next                 uint32
+	nx_xp_desc_index                uint32
+	nx_xp_desc_len                  uint32
+	nx_xp_data_index                uint32
+	nx_xp_data_len                  uint32
+	nx_spaceman_oid                 uint64
+	nx_omap_oid                     uint64
+	nx_reaper_oid                   uint64
+	nx_test_type                    uint32
+	nx_max_file_systems             uint32
+	nx_fs_oid                       [NX_MAX_FILE_SYSTEMS]uint64
+	nx_counters                     [NX_NUM_COUNTERS]uint64
+	nx_blocked_out_prange           prange_t
+	nx_evict_mapping_tree_oid       uint64
+	nx_flags                        uint64
+	nx_efi_jumpstart                uint64
+	nx_fusion_uuid                  uuid_t
+	nx_keylocker                    prange_t
+	nx_ephemeral_info               [NX_EPH_INFO_COUNT]uint64
+	nx_test_oid                     uint64
+	nx_fusion_mt_oid                uint64
+	nx_fusion_wbc_oid               uint64
+	nx_fusion_wbc                   prange_t
+	nx_newest_mounted_version       uint64
+	nx_mkb_locker                   prange_t
 }
 
 // Attempt to parse a partition as a APFS partition.
@@ -55,16 +116,26 @@ func ParseAPFSPartition(fd int, paritionEntry GPTPartitionEntry, LBASize uint64)
 		return emptyBlock, 1
 	}
 
-	return ReadAPFSSuperBlock(superBlockBytes), 0
+	block := ReadAPFSSuperBlock(superBlockBytes)
+	DumpAPFSSuperblock(block)
+
+	return block, 0
 }
 
-func ReadAPFSSuperBlock(bytes []byte) APFSContainerSuperBlock {
+func ReadAPFSSuperBlock(superblockBytes []byte) APFSContainerSuperBlock {
 	var block APFSContainerSuperBlock
 
-	// TODO: implement
+	if err := binary.Read(
+		bytes.NewReader(superblockBytes),
+		binary.LittleEndian,
+		&block,
+	); err != nil {
+		fmt.Println(err)
+	}
 
 	return block
 }
 
-func ReadAPFSHeader(lbaSize int, startingLBA int) {
+func DumpAPFSSuperblock(block APFSContainerSuperBlock) {
+	fmt.Printf("magic: %04X\n blk size: %d\b blk count: %d\n", block.nx_magic, block.nx_block_size, block.nx_block_count)
 }

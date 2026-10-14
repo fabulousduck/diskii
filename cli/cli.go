@@ -36,7 +36,7 @@ func ParseFlags() {
 
 		gptHeaderExt, errorCode := disktools.GetGPTHeader(fd)
 		if errorCode != 0 {
-			fmt.Printf("Failed to get GPT header for drive %s\n", fd)
+			fmt.Printf("Failed to get GPT header for drive %d\n", fd)
 		}
 		disktools.DumpGPTHeader(gptHeaderExt, *verboseFlag)
 		return

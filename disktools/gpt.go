@@ -183,6 +183,20 @@ func ReadGPTHeader(gptBytes []byte, headerStruct *GPTHeader) {
 	}
 }
 
+func getEntryTypeString(uniquePartitionGuid PartitionTypeGuid) string {
+
+	switch uniquePartitionGuid {
+	case APFSIdentifier:
+		return "APFS"
+	case APFSRecoveryIdentifier:
+		return "APFS Recovery"
+	case APFSISCIdentifier:
+		return "APFS ISC"
+	}
+
+	return "Unknown drive type"
+}
+
 func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {
 	if entry.StartingLBA == 0 {
 		return
@@ -196,7 +210,7 @@ func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool
 	}
 
 	if !verbose {
-		fmt.Printf("%s %d gb\n", printablePartitionName, partitionSizeGB)
+		fmt.Printf("name: %s size: %d gb type: %s\n", printablePartitionName, partitionSizeGB, getEntryTypeString(entry.PartitionTypeGuid))
 		return
 	}
 
