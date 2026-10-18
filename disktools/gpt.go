@@ -183,18 +183,36 @@ func ReadGPTHeader(gptBytes []byte, headerStruct *GPTHeader) {
 	}
 }
 
-func getEntryTypeString(uniquePartitionGuid PartitionTypeGuid) string {
+func formatGPTTypeGuid(partitionTypeGuid PartitionTypeGuid) string {
+	return fmt.Sprintf("%08X-%04X-%04X-%X-%X",
+		binary.LittleEndian.Uint32(partitionTypeGuid[0:4]),
+		binary.LittleEndian.Uint16(partitionTypeGuid[4:6]),
+		binary.LittleEndian.Uint16(partitionTypeGuid[6:8]),
+		partitionTypeGuid[8:10],
+		partitionTypeGuid[10:16],
+	)
+}
 
-	switch uniquePartitionGuid {
-	case APFSIdentifier:
+func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
+
+	formattedTypeGuid := formatGPTTypeGuid(partitionTypeGuid)
+
+	switch formattedTypeGuid {
+	case APDS_IDENTIFIER:
 		return "APFS"
-	case APFSRecoveryIdentifier:
+	case APFS_RECOVERY_IDENTIFIER:
 		return "APFS Recovery"
-	case APFSISCIdentifier:
+	case APFS_ISC_IDENTIFIER:
 		return "APFS ISC"
+	case MSFT_PARTITION_BASIC_DATA_GUID:
+		return "Microsoft basic data partition"
+	case MSFT_PARTITION_SYSTEM_GUID:
+		return "Microsoft system partition"
+	case LINUX_PARTITION_IDENTIFIER:
+		return "Linux FS partition"
 	}
 
-	return "Unknown drive type"
+	return formattedTypeGuid
 }
 
 func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {
