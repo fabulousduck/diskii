@@ -2,7 +2,7 @@
 
 Why not
 
-## todo
+## TODO
 
 - [ ] Finish APFS support
 - [ ] NTFS

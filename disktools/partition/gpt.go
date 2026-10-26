@@ -8,36 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-/**
-
-Storage device
-│
-├── Logical blocks (LBAs)
-│   │
-│   ├── Partition table (GPT)
-│   │   │
-│   │   └── Partition entries
-│   │       │
-│   │       └── Partition LBA ranges
-│   │
-│   └── Partitions
-│       │
-│       └── Filesystem or container
-│           │
-│           ├── Filesystem metadata
-│           │   ├── Superblock/header
-│           │   ├── Allocation metadata
-│           │   └── Directory metadata
-│           │
-│           └── Directories
-│               │
-│               └── Files
-│                   │
-│                   └── File data
-
-An LBA (Logical Block Address) is the numbered position of a fixed-size block on a storage device.
-*/
-
+// Super type so we can pass info around a bit easier
 type GPTHeaderExt struct {
 	RawHeader  GPTHeader
 	SectorSize int
@@ -78,8 +49,16 @@ type GPTPartitionEntry struct {
 
 type PartitionTypeGuid [16]byte
 
-func DiskIsGPT(fd int) bool {
+var partitionTypeStringMap = map[string]string{
+	APFS_IDENTIFIER:                "APFS",
+	APFS_RECOVERY_IDENTIFIER:       "APFS Recovery",
+	APFS_ISC_IDENTIFIER:            "APFS ISC",
+	MSFT_PARTITION_BASIC_DATA_GUID: "Microsoft basic data partition",
+	MSFT_PARTITION_SYSTEM_GUID:     "Microsoft system partition",
+	LINUX_PARTITION_IDENTIFIER:     "Linux FS partition",
+}
 
+func DiskIsGPT(fd int) bool {
 	logicalBlockSize, err := GetLogicalBlockSize(fd)
 
 	if err != nil {
@@ -89,7 +68,6 @@ func DiskIsGPT(fd int) bool {
 
 	gptBytes := make([]byte, logicalBlockSize)
 	rsize, err := unix.Pread(fd, gptBytes, int64(logicalBlockSize))
-
 	if rsize <= logicalBlockSize {
 		return false
 	}
@@ -108,10 +86,9 @@ func GetGPTHeader(fd int) (GPTHeaderExt, int) {
 	}
 
 	gptHeaderExt.SectorSize = logicalBlockSize
-
+	GPTHeaderBytes := make([]byte, logicalBlockSize)
 	// the disk header is offset by one block
-	gpt_header_bytes := make([]byte, logicalBlockSize)
-	rsize, err := unix.Pread(fd, gpt_header_bytes, int64(logicalBlockSize))
+	rsize, err := unix.Pread(fd, GPTHeaderBytes, int64(logicalBlockSize))
 
 	switch true {
 	case err != nil:
@@ -120,14 +97,13 @@ func GetGPTHeader(fd int) (GPTHeaderExt, int) {
 	case rsize == 0:
 		fmt.Printf("Pread EOF\n")
 		return gptHeaderExt, 1
-	case !isGPTHeader(gpt_header_bytes):
+	case !isGPTHeader(GPTHeaderBytes):
 		fmt.Printf("drive is not GPT\n")
 		return gptHeaderExt, 1
 	}
 
-	ReadGPTHeader(gpt_header_bytes, &gptHeader)
+	ReadGPTHeader(GPTHeaderBytes, &gptHeader)
 	gptHeaderExt.RawHeader = gptHeader
-
 	return gptHeaderExt, 0
 }
 
@@ -135,12 +111,12 @@ func isGPTHeader(bytes []byte) bool {
 	return string(bytes[:8]) == "EFI PART"
 }
 
-func ReadGPTEntries(fd int, GPTHeader GPTHeader, logical_block_size uint32) []GPTPartitionEntry {
+func ReadGPTEntries(fd int, GPTHeader GPTHeader, logicalBlockSize uint32) []GPTPartitionEntry {
 	// LBA0 (protective MBR) and LBA1 (GPT header) are reserved, so start at 2
 	GPTEntriesStartOffset := uint32(2)
 	GPTPartitionEntries := make([]GPTPartitionEntry, 0, GPTHeader.NumPartitionsEntries)
 	AllLBABytes := make([]byte, GPTHeader.SizeofPartitionEntry*GPTHeader.NumPartitionsEntries)
-	_, err := unix.Pread(fd, AllLBABytes, int64(GPTEntriesStartOffset*logical_block_size))
+	_, err := unix.Pread(fd, AllLBABytes, int64(GPTEntriesStartOffset*logicalBlockSize))
 
 	if err != nil {
 		fmt.Printf("Error reading LBA entry: %v\n", err)
@@ -183,36 +159,22 @@ func ReadGPTHeader(gptBytes []byte, headerStruct *GPTHeader) {
 	}
 }
 
-func formatGPTTypeGuid(partitionTypeGuid PartitionTypeGuid) string {
-	return fmt.Sprintf("%08X-%04X-%04X-%X-%X",
+func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
+	formattedTypeGuid := fmt.Sprintf("%08X-%04X-%04X-%X-%X",
 		binary.LittleEndian.Uint32(partitionTypeGuid[0:4]),
 		binary.LittleEndian.Uint16(partitionTypeGuid[4:6]),
 		binary.LittleEndian.Uint16(partitionTypeGuid[6:8]),
 		partitionTypeGuid[8:10],
 		partitionTypeGuid[10:16],
 	)
-}
 
-func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
-
-	formattedTypeGuid := formatGPTTypeGuid(partitionTypeGuid)
-
-	switch formattedTypeGuid {
-	case APDS_IDENTIFIER:
-		return "APFS"
-	case APFS_RECOVERY_IDENTIFIER:
-		return "APFS Recovery"
-	case APFS_ISC_IDENTIFIER:
-		return "APFS ISC"
-	case MSFT_PARTITION_BASIC_DATA_GUID:
-		return "Microsoft basic data partition"
-	case MSFT_PARTITION_SYSTEM_GUID:
-		return "Microsoft system partition"
-	case LINUX_PARTITION_IDENTIFIER:
-		return "Linux FS partition"
+	for k, v := range partitionTypeStringMap {
+		if partitionTypeGuid == k {
+			return v
+		}
 	}
 
-	return formattedTypeGuid
+	return "unknown type"
 }
 
 func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {

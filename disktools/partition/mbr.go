@@ -18,21 +18,14 @@ type MBRStruct struct {
 
 func DiskIsMBR(fd int) bool {
 	MBRSize := 512
-	logicalBlockSize, err := GetLogicalBlockSize(fd)
-
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return false
-	}
-
-	mbr_bytes := make([]byte, logicalBlockSize)
-	rsize, err := unix.Pread(fd, mbr_bytes, 0)
+	MBRBytes := make([]byte, MBRSize)
+	rsize, _ := unix.Pread(fd, MBRBytes, 0)
 
 	if rsize < MBRSize {
 		return false
 	}
 
-	return mbr_bytes[510] != 0x55 && mbr_bytes[511] != 0xAA
+	return MBRBytes[510] != 0x55 && MBRBytes[511] != 0xAA
 }
 
 func ParseMBR(fd int) MBRStruct {
@@ -44,17 +37,11 @@ func ParseMBR(fd int) MBRStruct {
 		return mbrStruct
 	}
 
-	mbr_bytes := make([]byte, logicalBlockSize)
-	unix.Pread(fd, mbr_bytes, 0)
-
-	return ReadMBR(mbr_bytes)
-}
-
-func ReadMBR(mbrBytes []byte) MBRStruct {
-	var mbrStruct MBRStruct
+	MBRBytes := make([]byte, logicalBlockSize)
+	unix.Pread(fd, MBRBytes, 0)
 
 	if err := binary.Read(
-		bytes.NewReader(mbrBytes),
+		bytes.NewReader(MBRBytes),
 		binary.LittleEndian,
 		&mbrStruct,
 	); err != nil {
