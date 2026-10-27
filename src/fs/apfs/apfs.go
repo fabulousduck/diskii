@@ -83,9 +83,6 @@ type APFSContainerSuperBlock struct {
 }
 
 // Attempt to parse a partition as a APFS partition.
-// diskName: /dev/ path to the disk to read from
-// partitionEntry: GPT partition record
-// LBASize: logical block size used on the disk
 func ParseAPFSPartition(fd int, startingLBA uint64, LBASize uint64) (APFSContainerSuperBlock, int) {
 	var emptyBlock APFSContainerSuperBlock
 	superBlockBytes := make([]byte, LBASize)

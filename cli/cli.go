@@ -1,12 +1,12 @@
 package cli
 
 import (
+	disktools "diskii/src"
+	"diskii/src/partition"
 	"flag"
 	"fmt"
 
 	"golang.org/x/sys/unix"
-
-	"disk-tool/disktools"
 )
 
 func ParseFlags() {
@@ -21,38 +21,38 @@ func ParseFlags() {
 		fd := disktools.GetFD(*inspectFlag)
 		defer unix.Close(fd)
 
-		if disktools.DiskIsMBR(fd) {
+		if partition.DiskIsMBR(fd) {
 			isMBR = true
 		}
 
-		if disktools.DiskIsGPT(fd) {
+		if partition.DiskIsGPT(fd) {
 			isGPT = true
 		}
 
 		if isMBR && !isGPT {
-			disktools.DumpMBR(disktools.ParseMBR(fd), *verboseFlag)
+			partition.DumpMBR(partition.ParseMBR(fd), *verboseFlag)
 			return
 		}
 
-		gptHeaderExt, errorCode := disktools.GetGPTHeader(fd)
+		gptHeaderExt, errorCode := partition.GetGPTHeader(fd)
 		if errorCode != 0 {
 			fmt.Printf("Failed to get GPT header for drive %d\n", fd)
 		}
-		disktools.DumpGPTHeader(gptHeaderExt, *verboseFlag)
+		partition.DumpGPTHeader(gptHeaderExt, *verboseFlag)
 		return
 	}
 
 	if *partitionsFlag != "" {
 		fd := disktools.GetFD(*partitionsFlag)
 		defer unix.Close(fd)
-		gptHeaderExt, errorCode := disktools.GetGPTHeader(fd)
+		gptHeaderExt, errorCode := partition.GetGPTHeader(fd)
 		if errorCode != 0 {
 			fmt.Printf("Failed to get GPT header for drive %s\n", *partitionsFlag)
 		}
-		disktools.DumpGPTHeader(gptHeaderExt, *verboseFlag)
-		gptEntries := disktools.ReadGPTEntries(fd, gptHeaderExt.RawHeader, uint32(gptHeaderExt.SectorSize))
+		partition.DumpGPTHeader(gptHeaderExt, *verboseFlag)
+		gptEntries := partition.ReadGPTEntries(fd, gptHeaderExt.RawHeader, uint32(gptHeaderExt.SectorSize))
 		for _, gptEntry := range gptEntries {
-			disktools.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag)
+			partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag)
 		}
 	}
 
