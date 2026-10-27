@@ -2,6 +2,7 @@ package cli
 
 import (
 	disktools "diskii/src"
+	"diskii/src/fs"
 	"diskii/src/partition"
 	"flag"
 	"fmt"
@@ -52,7 +53,10 @@ func ParseFlags() {
 		partition.DumpGPTHeader(gptHeaderExt, *verboseFlag)
 		gptEntries := partition.ReadGPTEntries(fd, gptHeaderExt.RawHeader, uint32(gptHeaderExt.SectorSize))
 		for _, gptEntry := range gptEntries {
-			partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag)
+			lbaBytes := make([]byte, gptHeaderExt.SectorSize)
+			unix.Pread(fd, lbaBytes, int64(gptEntry.StartingLBA*uint64(gptHeaderExt.SectorSize)))
+			possibleFSType := fs.GetBasicPartitionFSType(lbaBytes)
+			partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag, possibleFSType)
 		}
 	}
 

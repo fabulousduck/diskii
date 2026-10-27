@@ -180,7 +180,7 @@ func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
 	return "unknown type"
 }
 
-func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool) {
+func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool, fsType string) {
 	if entry.StartingLBA == 0 {
 		return
 	}
@@ -193,7 +193,7 @@ func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool
 	}
 
 	if !verbose {
-		fmt.Printf("name: %s size: %d gb type: %s\n", printablePartitionName, partitionSizeGB, getEntryTypeString(entry.PartitionTypeGuid))
+		fmt.Printf("fs: %s size: %d gb type: %s name: %s\n", fsType, partitionSizeGB, getEntryTypeString(entry.PartitionTypeGuid), printablePartitionName)
 		return
 	}
 
