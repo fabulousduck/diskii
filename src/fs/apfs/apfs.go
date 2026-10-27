@@ -1,4 +1,4 @@
-package disktools
+package apfs
 
 import (
 	"bytes"
@@ -86,10 +86,10 @@ type APFSContainerSuperBlock struct {
 // diskName: /dev/ path to the disk to read from
 // partitionEntry: GPT partition record
 // LBASize: logical block size used on the disk
-func ParseAPFSPartition(fd int, paritionEntry GPTPartitionEntry, LBASize uint64) (APFSContainerSuperBlock, int) {
+func ParseAPFSPartition(fd int, startingLBA uint64, LBASize uint64) (APFSContainerSuperBlock, int) {
 	var emptyBlock APFSContainerSuperBlock
 	superBlockBytes := make([]byte, LBASize)
-	rsize, err := unix.Pread(fd, superBlockBytes, int64(paritionEntry.StartingLBA*LBASize))
+	rsize, err := unix.Pread(fd, superBlockBytes, int64(startingLBA*LBASize))
 	if err != nil {
 		fmt.Printf("%s\n", err)
 	}

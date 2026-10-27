@@ -1,6 +1,6 @@
 package main
 
-import "disk-tool/cli"
+import "diskii/cli"
 
 func main() {
 

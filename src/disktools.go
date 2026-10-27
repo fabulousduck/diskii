@@ -1,6 +1,7 @@
 package disktools
 
 import (
+	diskiiOS "diskii/src/os"
 	"fmt"
 	"os"
 
@@ -25,7 +26,7 @@ func GetDiskNames() []string {
 
 	for _, dirEntry := range dirEntries {
 		diskName := dirEntry.Name()
-		if isDiskName(diskName) {
+		if diskiiOS.IsDiskName(diskName) {
 			disks = append(disks, fmt.Sprintf("/dev/%s", diskName))
 		}
 	}

@@ -1,4 +1,4 @@
-package disktools
+package os
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ func GetLogicalBlockSize(fd int) (int, error) {
 	return unix.IoctlGetInt(fd, DKIOCGETBLOCKSIZE)
 }
 
-func isDiskName(name string) bool {
+func IsDiskName(name string) bool {
 	matched, err := regexp.Match(`^disk[0-9]*$`, []byte(name))
 	if err != nil {
 		fmt.Printf("error regexing disk name %s\n", err.Error())

@@ -1,7 +1,10 @@
-package disktools
+package partition
 
 import (
 	"bytes"
+	"diskii/src/fs"
+	"diskii/src/fs/apfs"
+	"diskii/src/os"
 	"encoding/binary"
 	"fmt"
 
@@ -50,16 +53,16 @@ type GPTPartitionEntry struct {
 type PartitionTypeGuid [16]byte
 
 var partitionTypeStringMap = map[string]string{
-	APFS_IDENTIFIER:                "APFS",
-	APFS_RECOVERY_IDENTIFIER:       "APFS Recovery",
-	APFS_ISC_IDENTIFIER:            "APFS ISC",
-	MSFT_PARTITION_BASIC_DATA_GUID: "Microsoft basic data partition",
-	MSFT_PARTITION_SYSTEM_GUID:     "Microsoft system partition",
-	LINUX_PARTITION_IDENTIFIER:     "Linux FS partition",
+	apfs.APFS_IDENTIFIER:              "APFS",
+	apfs.APFS_RECOVERY_IDENTIFIER:     "APFS Recovery",
+	apfs.APFS_ISC_IDENTIFIER:          "APFS ISC",
+	fs.MSFT_PARTITION_BASIC_DATA_GUID: "Microsoft basic data partition",
+	fs.MSFT_PARTITION_SYSTEM_GUID:     "Microsoft system partition",
+	fs.LINUX_PARTITION_IDENTIFIER:     "Linux FS partition",
 }
 
 func DiskIsGPT(fd int) bool {
-	logicalBlockSize, err := GetLogicalBlockSize(fd)
+	logicalBlockSize, err := os.GetLogicalBlockSize(fd)
 
 	if err != nil {
 		fmt.Printf("%s\n", err)
@@ -78,7 +81,7 @@ func DiskIsGPT(fd int) bool {
 func GetGPTHeader(fd int) (GPTHeaderExt, int) {
 	gptHeaderExt := GPTHeaderExt{}
 	gptHeader := GPTHeader{}
-	logicalBlockSize, err := GetLogicalBlockSize(fd)
+	logicalBlockSize, err := os.GetLogicalBlockSize(fd)
 
 	if err != nil {
 		fmt.Printf("Error calling ioctl to get logical block size %v\n", err)
@@ -169,7 +172,7 @@ func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
 	)
 
 	for k, v := range partitionTypeStringMap {
-		if partitionTypeGuid == k {
+		if formattedTypeGuid == k {
 			return v
 		}
 	}

@@ -1,4 +1,4 @@
-module disk-tool
+module diskii
 
 go 1.26.0
 

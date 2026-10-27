@@ -1,7 +1,8 @@
-package disktools
+package partition
 
 import (
 	"bytes"
+	"diskii/src/os"
 	"encoding/binary"
 	"fmt"
 
@@ -30,7 +31,7 @@ func DiskIsMBR(fd int) bool {
 
 func ParseMBR(fd int) MBRStruct {
 	mbrStruct := MBRStruct{}
-	logicalBlockSize, err := GetLogicalBlockSize(fd)
+	logicalBlockSize, err := os.GetLogicalBlockSize(fd)
 
 	if err != nil {
 		fmt.Printf("%s\n", err)
