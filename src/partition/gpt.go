@@ -7,6 +7,7 @@ import (
 	"diskii/src/os"
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	"golang.org/x/sys/unix"
 )
@@ -117,7 +118,7 @@ func isGPTHeader(bytes []byte) bool {
 func ReadGPTEntries(fd int, GPTHeader GPTHeader, logicalBlockSize uint32) []GPTPartitionEntry {
 	// LBA0 (protective MBR) and LBA1 (GPT header) are reserved, so start at 2
 	GPTEntriesStartOffset := uint32(2)
-	GPTPartitionEntries := make([]GPTPartitionEntry, 0, GPTHeader.NumPartitionsEntries)
+	GPTPartitionEntries := make([]GPTPartitionEntry, GPTHeader.NumPartitionsEntries)
 	AllLBABytes := make([]byte, GPTHeader.SizeofPartitionEntry*GPTHeader.NumPartitionsEntries)
 	_, err := unix.Pread(fd, AllLBABytes, int64(GPTEntriesStartOffset*logicalBlockSize))
 
@@ -125,13 +126,18 @@ func ReadGPTEntries(fd int, GPTHeader GPTHeader, logicalBlockSize uint32) []GPTP
 		fmt.Printf("Error reading LBA entry: %v\n", err)
 	}
 
+	var wg sync.WaitGroup
 	for i := uint32(0); i < GPTHeader.NumPartitionsEntries; i++ {
-		LBAEntryStart := i * GPTHeader.SizeofPartitionEntry
-		LBAEntryEnd := LBAEntryStart + GPTHeader.SizeofPartitionEntry
-		LBABytes := AllLBABytes[LBAEntryStart:LBAEntryEnd]
-
-		GPTPartitionEntries = append(GPTPartitionEntries, ReadLBAEntry(LBABytes))
+		wg.Add(1)
+		go func(idx uint32) {
+			defer wg.Done()
+			LBAEntryStart := i * GPTHeader.SizeofPartitionEntry
+			LBAEntryEnd := LBAEntryStart + GPTHeader.SizeofPartitionEntry
+			GPTPartitionEntries[idx] = ReadLBAEntry(AllLBABytes[LBAEntryStart:LBAEntryEnd])
+		}(i)
 	}
+
+	wg.Wait()
 
 	return GPTPartitionEntries
 }
@@ -180,9 +186,9 @@ func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
 	return "unknown type"
 }
 
-func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool, fsType string) {
+func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool, fsType string) string {
 	if entry.StartingLBA == 0 {
-		return
+		return ""
 	}
 
 	partitionSizeGB := ((entry.EndingLBA - entry.StartingLBA) * uint64(sectorSize)) / 1e9
@@ -193,19 +199,26 @@ func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool
 	}
 
 	if !verbose {
-		fmt.Printf("fs: %s size: %d gb type: %s name: %s\n", fsType, partitionSizeGB, getEntryTypeString(entry.PartitionTypeGuid), printablePartitionName)
-		return
+		return fmt.Sprintf("fs: %s size: %d gb type: %s name: %s\n", fsType, partitionSizeGB, getEntryTypeString(entry.PartitionTypeGuid), printablePartitionName)
 	}
 
-	fmt.Printf("----------- Partition entry -----------\n")
-	fmt.Printf("PartitionSize		%d gb\n", partitionSizeGB)
-	fmt.Printf("PartitionTypeGuid:       % x\n", entry.PartitionTypeGuid)
-	fmt.Printf("UniquePartitionTypeGuid: % x\n", entry.UniquePartitionGuid)
-	fmt.Printf("StartingLBA:              %d\n", entry.StartingLBA)
-	fmt.Printf("EndingLBA:                %d\n", entry.EndingLBA)
-	fmt.Printf("Attributes:               %d\n", entry.Attributes)
-	fmt.Printf("PartitionName:            %s\n", printablePartitionName)
-
+	return fmt.Sprintf(`
+	----------- Partition entry -----------
+	PartitionSize		%d gb
+	PartitionTypeGuid:       % x
+	UniquePartitionTypeGuid: % x
+	StartingLBA:              %d
+	EndingLBA:                %d
+	Attributes:               %d
+	PartitionName:            %s
+	`,
+		partitionSizeGB,
+		entry.PartitionTypeGuid,
+		entry.UniquePartitionGuid,
+		entry.StartingLBA,
+		entry.EndingLBA,
+		entry.Attributes,
+		printablePartitionName)
 }
 
 func DumpGPTHeader(header GPTHeaderExt, verbose bool) {

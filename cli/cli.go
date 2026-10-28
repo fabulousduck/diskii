@@ -52,12 +52,16 @@ func ParseFlags() {
 		}
 		partition.DumpGPTHeader(gptHeaderExt, *verboseFlag)
 		gptEntries := partition.ReadGPTEntries(fd, gptHeaderExt.RawHeader, uint32(gptHeaderExt.SectorSize))
+
 		for _, gptEntry := range gptEntries {
+
 			lbaBytes := make([]byte, gptHeaderExt.SectorSize)
 			unix.Pread(fd, lbaBytes, int64(gptEntry.StartingLBA*uint64(gptHeaderExt.SectorSize)))
 			possibleFSType := fs.GetBasicPartitionFSType(lbaBytes)
-			partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag, possibleFSType)
+			fmt.Printf("%s", partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag, possibleFSType))
+
 		}
+
 	}
 
 	if *listDiskFlag {
