@@ -46,7 +46,7 @@ type NTFSInfo struct {
 
 func ReadNTFSInfo(fd int, offset int64) NTFSInfo {
 	ntfsInfo := NTFSInfo{}
-	// We only read the info we need. No need to read the boot sector.
+	// We only read the info we need. No need to read the boot code.
 	bootSectorSize := 0x50
 	bootSectorBytes := make([]byte, bootSectorSize)
 	_, err := unix.Pread(fd, bootSectorBytes, offset)
