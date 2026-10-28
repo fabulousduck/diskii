@@ -15,6 +15,8 @@ func ParseFlags() {
 	inspectFlag := flag.String("i", "", "inspect a drive")
 	partitionsFlag := flag.String("p", "", "inspect a drive's partitions")
 	verboseFlag := flag.Bool("v", false, "verbose")
+	dumpPartitionVolumeFlag := flag.String("dv", "", "dump volume info of a partition")
+
 	flag.Parse()
 
 	if *inspectFlag != "" {
@@ -51,14 +53,20 @@ func ParseFlags() {
 			fmt.Printf("Failed to get GPT header for drive %s\n", *partitionsFlag)
 		}
 		partition.DumpGPTHeader(gptHeaderExt, *verboseFlag)
-		gptEntries := partition.ReadGPTEntries(fd, gptHeaderExt.RawHeader, uint32(gptHeaderExt.SectorSize))
+		gptEntries := partition.ReadGPTEntries(fd, gptHeaderExt.RawHeader, uint32(gptHeaderExt.LogicalBlockSize))
 
 		for _, gptEntry := range gptEntries {
 
-			lbaBytes := make([]byte, gptHeaderExt.SectorSize)
-			unix.Pread(fd, lbaBytes, int64(gptEntry.StartingLBA*uint64(gptHeaderExt.SectorSize)))
+			lbaBytes := make([]byte, gptHeaderExt.LogicalBlockSize)
+			unix.Pread(fd, lbaBytes, int64(gptEntry.StartingLBA*uint64(gptHeaderExt.LogicalBlockSize)))
 			possibleFSType := fs.GetBasicPartitionFSType(lbaBytes)
-			fmt.Printf("%s", partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.SectorSize, *verboseFlag, possibleFSType))
+
+			if *dumpPartitionVolumeFlag != "" && (partition.FormatTypeGuid(gptEntry.UniquePartitionGuid) == *dumpPartitionVolumeFlag) {
+				offset := gptEntry.StartingLBA * uint64(gptHeaderExt.LogicalBlockSize)
+				fs.DumpFSInfo(fd, possibleFSType, int64(offset))
+			}
+
+			fmt.Printf("%s", partition.DumpGPTPartitionEntry(gptEntry, gptHeaderExt.LogicalBlockSize, *verboseFlag, possibleFSType))
 
 		}
 

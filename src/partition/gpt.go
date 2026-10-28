@@ -15,7 +15,7 @@ import (
 // Super type so we can pass info around a bit easier
 type GPTHeaderExt struct {
 	RawHeader  GPTHeader
-	SectorSize int
+	LogicalBlockSize int
 }
 
 // GPT header read directly from the disk
@@ -89,7 +89,7 @@ func GetGPTHeader(fd int) (GPTHeaderExt, int) {
 		return gptHeaderExt, 1
 	}
 
-	gptHeaderExt.SectorSize = logicalBlockSize
+	gptHeaderExt.LogicalBlockSize = logicalBlockSize
 	GPTHeaderBytes := make([]byte, logicalBlockSize)
 	// the disk header is offset by one block
 	rsize, err := unix.Pread(fd, GPTHeaderBytes, int64(logicalBlockSize))
@@ -168,15 +168,19 @@ func ReadGPTHeader(gptBytes []byte, headerStruct *GPTHeader) {
 	}
 }
 
-func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
-	formattedTypeGuid := fmt.Sprintf("%08X-%04X-%04X-%X-%X",
+func FormatTypeGuid(partitionTypeGuid PartitionTypeGuid) string {
+	return fmt.Sprintf("%08X-%04X-%04X-%X-%X",
 		binary.LittleEndian.Uint32(partitionTypeGuid[0:4]),
 		binary.LittleEndian.Uint16(partitionTypeGuid[4:6]),
 		binary.LittleEndian.Uint16(partitionTypeGuid[6:8]),
 		partitionTypeGuid[8:10],
 		partitionTypeGuid[10:16],
 	)
+}
 
+func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
+
+	formattedTypeGuid := FormatTypeGuid(partitionTypeGuid)
 	for k, v := range partitionTypeStringMap {
 		if formattedTypeGuid == k {
 			return v
@@ -186,12 +190,12 @@ func getEntryTypeString(partitionTypeGuid PartitionTypeGuid) string {
 	return "unknown type"
 }
 
-func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool, fsType string) string {
+func DumpGPTPartitionEntry(entry GPTPartitionEntry, logicalBlockSize int, verbose bool, fsType string) string {
 	if entry.StartingLBA == 0 {
 		return ""
 	}
 
-	partitionSizeGB := ((entry.EndingLBA - entry.StartingLBA) * uint64(sectorSize)) / 1e9
+	partitionSizeGB := ((entry.EndingLBA - entry.StartingLBA) * uint64(logicalBlockSize)) / 1e9
 	printablePartitionName := string(bytes.TrimRight(entry.PartitionName[:], "\x00"))
 
 	if printablePartitionName == "" {
@@ -199,7 +203,18 @@ func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool
 	}
 
 	if !verbose {
-		return fmt.Sprintf("fs: %s size: %d gb type: %s name: %s\n", fsType, partitionSizeGB, getEntryTypeString(entry.PartitionTypeGuid), printablePartitionName)
+		return fmt.Sprintf(`
+		fs: %s
+		size: %d gb
+		type: %s
+		name: %s
+		uid: %s
+		`,
+			fsType,
+			partitionSizeGB,
+			getEntryTypeString(entry.PartitionTypeGuid),
+			printablePartitionName,
+			FormatTypeGuid(entry.UniquePartitionGuid))
 	}
 
 	return fmt.Sprintf(`
@@ -223,7 +238,7 @@ func DumpGPTPartitionEntry(entry GPTPartitionEntry, sectorSize int, verbose bool
 
 func DumpGPTHeader(header GPTHeaderExt, verbose bool) {
 
-	diskSize := ((header.RawHeader.LastUsableLBA + 1) * uint64(header.SectorSize)) / 1e9
+	diskSize := ((header.RawHeader.LastUsableLBA + 1) * uint64(header.LogicalBlockSize)) / 1e9
 
 	if !verbose {
 		fmt.Printf("%s	%d gb\n", header.RawHeader.Signature, diskSize)
