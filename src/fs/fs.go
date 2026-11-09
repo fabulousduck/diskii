@@ -3,6 +3,7 @@ package fs
 import (
 	"diskii/src/fs/ntfs"
 	"fmt"
+	"io"
 )
 
 var MSFT_PARTITION_BASIC_DATA_GUID = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7"
@@ -32,10 +33,10 @@ func GetBasicPartitionFSType(logicalBlock []byte) string {
 }
 
 // offset is in bytes from the start of the drive.
-func DumpFSInfo(fd int, fsType string, offset int64) {
+func DumpFSInfo(reader io.ReaderAt, fsType string, offset int64) {
 	switch fsType {
 	case "NTFS":
-		ntfsInfo := ntfs.ReadNTFSInfo(fd, offset)
+		ntfsInfo := ntfs.ReadNTFSInfo(reader, offset)
 		fmt.Printf("%s", ntfs.DumpNTFSInfo(ntfsInfo))
 	}
 }

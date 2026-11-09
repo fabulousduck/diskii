@@ -4,17 +4,15 @@ import (
 	"bytes"
 	"diskii/src/fs"
 	"diskii/src/fs/apfs"
-	"diskii/src/os"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"sync"
-
-	"golang.org/x/sys/unix"
 )
 
 // Super type so we can pass info around a bit easier
 type GPTHeaderExt struct {
-	RawHeader  GPTHeader
+	RawHeader        GPTHeader
 	LogicalBlockSize int
 }
 
@@ -62,37 +60,26 @@ var partitionTypeStringMap = map[string]string{
 	fs.LINUX_PARTITION_IDENTIFIER:     "Linux FS partition",
 }
 
-func DiskIsGPT(fd int) bool {
-	logicalBlockSize, err := os.GetLogicalBlockSize(fd)
+func DiskIsGPT(reader io.ReaderAt, blockSize int) bool {
+	gptBytes := make([]byte, blockSize)
+	rsize, err := reader.ReadAt(gptBytes, int64(blockSize))
 
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return false
-	}
-
-	gptBytes := make([]byte, logicalBlockSize)
-	rsize, err := unix.Pread(fd, gptBytes, int64(logicalBlockSize))
-	if rsize <= logicalBlockSize {
+	// TODO: better error handling. Be more Go idiomatic or something
+	if rsize <= blockSize || err != nil {
 		return false
 	}
 
 	return isGPTHeader(gptBytes)
 }
 
-func GetGPTHeader(fd int) (GPTHeaderExt, int) {
+func GetGPTHeader(reader io.ReaderAt, blockSize int) (GPTHeaderExt, int) {
 	gptHeaderExt := GPTHeaderExt{}
 	gptHeader := GPTHeader{}
-	logicalBlockSize, err := os.GetLogicalBlockSize(fd)
+	gptHeaderExt.LogicalBlockSize = blockSize
+	GPTHeaderBytes := make([]byte, blockSize)
 
-	if err != nil {
-		fmt.Printf("Error calling ioctl to get logical block size %v\n", err)
-		return gptHeaderExt, 1
-	}
-
-	gptHeaderExt.LogicalBlockSize = logicalBlockSize
-	GPTHeaderBytes := make([]byte, logicalBlockSize)
 	// the disk header is offset by one block
-	rsize, err := unix.Pread(fd, GPTHeaderBytes, int64(logicalBlockSize))
+	rsize, err := reader.ReadAt(GPTHeaderBytes, int64(blockSize))
 
 	switch true {
 	case err != nil:
@@ -115,12 +102,12 @@ func isGPTHeader(bytes []byte) bool {
 	return string(bytes[:8]) == "EFI PART"
 }
 
-func ReadGPTEntries(fd int, GPTHeader GPTHeader, logicalBlockSize uint32) []GPTPartitionEntry {
+func ReadGPTEntries(reader io.ReaderAt, GPTHeader GPTHeader, logicalBlockSize uint32) []GPTPartitionEntry {
 	// LBA0 (protective MBR) and LBA1 (GPT header) are reserved, so start at 2
 	GPTEntriesStartOffset := uint32(2)
 	GPTPartitionEntries := make([]GPTPartitionEntry, GPTHeader.NumPartitionsEntries)
 	AllLBABytes := make([]byte, GPTHeader.SizeofPartitionEntry*GPTHeader.NumPartitionsEntries)
-	_, err := unix.Pread(fd, AllLBABytes, int64(GPTEntriesStartOffset*logicalBlockSize))
+	_, err := reader.ReadAt(AllLBABytes, int64(GPTEntriesStartOffset*logicalBlockSize))
 
 	if err != nil {
 		fmt.Printf("Error reading LBA entry: %v\n", err)

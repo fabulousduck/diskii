@@ -2,11 +2,9 @@ package partition
 
 import (
 	"bytes"
-	"diskii/src/os"
 	"encoding/binary"
 	"fmt"
-
-	"golang.org/x/sys/unix"
+	"io"
 )
 
 type MBRStruct struct {
@@ -17,29 +15,23 @@ type MBRStruct struct {
 	Signature              uint16
 }
 
-func DiskIsMBR(fd int) bool {
+func DiskIsMBR(reader io.ReaderAt) bool {
 	MBRSize := 512
 	MBRBytes := make([]byte, MBRSize)
-	rsize, _ := unix.Pread(fd, MBRBytes, 0)
+	rsize, _ := reader.ReadAt(MBRBytes, 0)
 
 	if rsize < MBRSize {
 		return false
 	}
 
-	return MBRBytes[510] != 0x55 && MBRBytes[511] != 0xAA
+	return MBRBytes[510] == 0x55 && MBRBytes[511] == 0xAA
 }
 
-func ParseMBR(fd int) MBRStruct {
+// TODO: also parse the MBR mirror at the end of the disk.
+func ParseMBR(reader io.ReaderAt, blockSize int) MBRStruct {
 	mbrStruct := MBRStruct{}
-	logicalBlockSize, err := os.GetLogicalBlockSize(fd)
-
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return mbrStruct
-	}
-
-	MBRBytes := make([]byte, logicalBlockSize)
-	unix.Pread(fd, MBRBytes, 0)
+	MBRBytes := make([]byte, blockSize)
+	reader.ReadAt(MBRBytes, 0)
 
 	if err := binary.Read(
 		bytes.NewReader(MBRBytes),

@@ -3,6 +3,7 @@ package disktools
 import (
 	diskiiOS "diskii/src/os"
 	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -41,4 +42,13 @@ func GetFD(fileName string) int {
 		return -1
 	}
 	return fd
+}
+
+func GetReaderAt(fileName string) io.ReaderAt {
+	file, err := os.Open(fileName)
+	if err != nil {
+		panic("failed to get readerAt")
+	}
+
+	return file
 }
