@@ -7,6 +7,8 @@ import (
 	"io"
 )
 
+var NFTS_BLOCK_SIZE = 512
+
 /*
  * NTFS layout
  * Partition boot sector
@@ -17,8 +19,7 @@ import (
  * 			|
  * File area
  *
- * cluster contains sectors. Everything is a sector
- *
+ * cluster (NTFS concept) contains sectors (Disk concept).
  */
 
 type NTFSInfo struct {
@@ -43,7 +44,26 @@ type NTFSInfo struct {
 	VolumeSerial           uint64 // 0x48
 }
 
-type NTFS_RECORD_HEADER struct {
+/*
+* What an MFT record looks like
+*
+0x000  ┌───────────────────────────┐
+
+	│ Header: fixed fields      │  "FILE", flags, sizes, record number…
+
+0x030  │ Header: update seq. array │  integrity check values
+0x038  ├───────────────────────────┤ <- offset stored at 0x14
+
+	│ $STANDARD_INFORMATION     │
+	│ $FILE_NAME                │  Body: attributes
+	│ $DATA                     │
+	│ FF FF FF FF               │  end marker
+	├───────────────────────────┤ <- used size (0x18)
+	│ unused / slack            │
+
+0x400  └───────────────────────────┘ <- allocated size (0x1C)
+*/
+type NTFSRecordHeader struct {
 	Signature        [4]byte /* 0x00 "FILE" ("BAAD" = torn write)  */
 	USAOffset        uint16  /* 0x04 offset of update seq. array   */
 	USACount         uint16  /* 0x06 entries in USA (1 + sectors)  */
@@ -90,10 +110,43 @@ func ReadNTFSInfo(reader io.ReaderAt, offset int64) NTFSInfo {
 	return ntfsInfo
 }
 
-func calcRecordSize(ntfsInfo NTFSInfo) int {
-	// All calculations have to happen in Int64 due to Golangs wrapping of smaller ints
-	clusterSizeBytes := int64(ntfsInfo.BytesPerSector) * int64(ntfsInfo.SectorsPerCluster)
-	return int(clusterSizeBytes)
+func validateUSNs(reader io.ReaderAt, ntfsRecordHeader NTFSRecordHeader, ntfsRecordOffset int64, ntfsRecordSize int) bool {
+	USArrayByteCount := ntfsRecordHeader.USACount * 2
+	updateSequenceArray := make([]byte, USArrayByteCount)
+	MFTRecordBytes := make([]byte, ntfsRecordSize)
+	reader.ReadAt(updateSequenceArray, ntfsRecordOffset+int64(ntfsRecordHeader.USAOffset))
+	reader.ReadAt(MFTRecordBytes, ntfsRecordOffset)
+
+	usn := binary.LittleEndian.Uint16(updateSequenceArray[0:2])
+
+	// One record spans multiple blocks. Block in NTFS is always 512. Record size is usually 1024, but can differ. We do the math on it beforehand
+	for i := 1; i <= (ntfsRecordSize / NFTS_BLOCK_SIZE); i++ {
+		validationBytesStart := (i * 512) - 2
+		validatenBytesEnd := validationBytesStart + 2
+		validationBytesValue := binary.LittleEndian.Uint16(MFTRecordBytes[validationBytesStart:validatenBytesEnd])
+		if validationBytesValue != usn {
+			fmt.Printf("validation byte %04X does not match usn %04X", validationBytesValue, usn)
+			return false
+		}
+	}
+
+	return true
+}
+
+// recordSize returns the size in bytes of one MFT record.
+func calcRecordSize(info NTFSInfo) int {
+	clustersPerfileRecord := int8(info.ClustersPerFileRecord) // must be interpreted as signed
+
+	if clustersPerfileRecord < 0 {
+		shift := -int(clustersPerfileRecord) // e.g. 0xF6 -> -10 -> 10
+		if shift < 9 || shift > 16 {         // 512 B .. 64 KB is plausible
+			return 0
+		}
+		return 1 << shift // 2^shift bytes
+	}
+
+	clusterSize := int(info.BytesPerSector) * int(info.SectorsPerCluster)
+	return int(clustersPerfileRecord) * clusterSize
 }
 
 // At record0, we find the file header for a file called $MFT
@@ -101,7 +154,7 @@ func calcRecordSize(ntfsInfo NTFSInfo) int {
 func ReadMFTFile(reader io.ReaderAt, ntfsInfo NTFSInfo, volumeOffset int64) {
 	recordZeroRelativeLocation := (int64(ntfsInfo.BytesPerSector) * int64(ntfsInfo.SectorsPerCluster)) * int64(ntfsInfo.MFTCluster)
 	recordZeroAbsoluteLocation := volumeOffset + int64(recordZeroRelativeLocation)
-	recordZeroStruct := NTFS_RECORD_HEADER{}
+	recordZeroStruct := NTFSRecordHeader{}
 	recordZeroBytes := make([]byte, 0x48)
 	_, err := reader.ReadAt(recordZeroBytes, int64(recordZeroAbsoluteLocation))
 
@@ -117,7 +170,8 @@ func ReadMFTFile(reader io.ReaderAt, ntfsInfo NTFSInfo, volumeOffset int64) {
 		fmt.Println(err)
 	}
 
-	fmt.Printf("record zero sig: %s\n", string(recordZeroStruct.Signature[:]))
+	recordSize := calcRecordSize(ntfsInfo)
+	validateUSNs(reader, recordZeroStruct, recordZeroAbsoluteLocation, recordSize)
 }
 
 func DumpNTFSInfo(ntfsInfo NTFSInfo) string {
